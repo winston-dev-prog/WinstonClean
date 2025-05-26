@@ -1,7 +1,7 @@
 flask
 flask-cors
 openai
-pinecone
+pinecone-client
 google-api-python-client
 requests
 twilio
