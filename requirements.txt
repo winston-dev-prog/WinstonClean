@@ -1,0 +1,8 @@
+flask
+flask-cors
+openai
+pinecone
+google-api-python-client
+requests
+twilio
+gunicorn
