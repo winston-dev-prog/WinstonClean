@@ -36,8 +36,10 @@ openai.api_key = OPENAI_API_KEY
 # --- Inicializace Pinecone klienta ---
 pc = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
 
+# Získáme seznam existujících indexů
+existing_indexes = pc.list_indexes()
 # Vytvoříme index, pokud ještě neexistuje
-if INDEX_NAME not in pc.list_indexes():
+if INDEX_NAME not in existing_indexes:
     pc.create_index(
         name=INDEX_NAME,
         dimension=INDEX_DIMENSION,
@@ -160,3 +162,4 @@ if __name__ == '__main__':
         port=int(os.environ.get("PORT", 5000)),
         debug=True
     )
+    
