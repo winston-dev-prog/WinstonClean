@@ -36,8 +36,7 @@ openai.api_key = OPENAI_API_KEY
 # --- Inicializace Pinecone klienta ---
 pc = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
 
-# Pokusíme se vytvořit index, pokud ještě neexistuje
-from pinecone.openapi_support.exceptions import PineconeApiException
+# Vytvoříme index, pokud ještě neexistuje (ignorujeme případný konflikt)
 try:
     pc.create_index(
         name=INDEX_NAME,
@@ -45,15 +44,12 @@ try:
         metric=INDEX_METRIC,
         spec=ServerlessSpec(cloud="aws", region=PINECONE_ENVIRONMENT)
     )
-except PineconeApiException as e:
-    # Ignorujeme chybu, pokud index již existuje
-    if hasattr(e, 'error') and isinstance(e.error, dict) and e.error.get('code') == 'ALREADY_EXISTS':
-        pass
-    else:
-        raise
+except Exception:
+    # Pokud index už existuje, Pinecone vrátí chybu; tu ignorujeme
+    pass
 
 # Získáme instanci indexu pro čtení a zápis
-memory_index = pc.Index(INDEX_NAME)
+memory_index = pc.Index(INDEX_NAME)(INDEX_NAME)
 memory_index = pc.Index(INDEX_NAME)
 
 # --- KV paměť souboru ---
