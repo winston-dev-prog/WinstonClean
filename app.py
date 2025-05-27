@@ -4,7 +4,9 @@ import re
 from datetime import datetime
 
 from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
+from flask_cors import CORS 
+app = Flask(...) 
+CORS(app)
 
 import openai
 from pinecone import Pinecone, ServerlessSpec
@@ -127,4 +129,3 @@ def chat():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
-    
