@@ -36,7 +36,7 @@ openai.api_key = OPENAI_API_KEY
 # --- Inicializace Pinecone klienta ---
 pc = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
 
-# Vytvoříme index, pokud ještě neexistuje (ignorujeme případný konflikt)
+# Pokusíme se vytvořit index, pokud ještě neexistuje; ignorujeme chybu konfliktu
 try:
     pc.create_index(
         name=INDEX_NAME,
@@ -45,11 +45,9 @@ try:
         spec=ServerlessSpec(cloud="aws", region=PINECONE_ENVIRONMENT)
     )
 except Exception:
-    # Pokud index už existuje, Pinecone vrátí chybu; tu ignorujeme
     pass
 
 # Získáme instanci indexu pro čtení a zápis
-memory_index = pc.Index(INDEX_NAME)(INDEX_NAME)
 memory_index = pc.Index(INDEX_NAME)
 
 # --- KV paměť souboru ---
