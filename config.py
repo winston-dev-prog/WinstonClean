@@ -3,7 +3,8 @@ import os
 # --- Načtení klíčů z env vars ---
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 PINECONE_API_KEY = os.environ["PINECONE_API_KEY"]
-PINECONE_ENV = os.environ.get("PINECONE_ENVIRONMENT", "us-east-1")
+PINECONE_ENVIRONMENT = os.environ.get("PINECONE_ENVIRONMENT", "us-east-1")
+PINECONE_ENV = PINECONE_ENVIRONMENT
 INDEX_NAME = os.environ.get("INDEX_NAME", "winston-memory")
 INDEX_DIMENSION = int(os.environ.get("INDEX_DIMENSION", 1536))
 INDEX_METRIC = os.environ.get("INDEX_METRIC", "cosine")
