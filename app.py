@@ -1,6 +1,4 @@
 import os
-import time
-import random
 import uuid
 import re
 from datetime import datetime, timezone
@@ -9,26 +7,27 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 import openai
-import pinecone
+from pinecone import Client as PineconeClient, ServerlessSpec
 
-# Relativní importy z vlastních balíčků
 from memory.kv_store import load_kv, save_kv
 from memory.vector_memory import retrieve_memories, store_memory
 from search.google_search import google_search
 from search.youtube_search import youtube_search
 
-# --- Načtení klíčů z env vars ---
-OPENAI_API_KEY      = os.environ["OPENAI_API_KEY"]
-PINECONE_API_KEY    = os.environ["PINECONE_API_KEY"]
-PINECONE_ENV        = os.environ.get("PINECONE_ENVIRONMENT", "us-east-1")
-INDEX_NAME          = os.environ.get("INDEX_NAME", "winston-memory")
-INDEX_DIMENSION     = int(os.environ.get("INDEX_DIMENSION", 1536))
-INDEX_METRIC        = os.environ.get("INDEX_METRIC", "cosine")
-TWILIO_ACCOUNT_SID  = os.environ.get("TWILIO_ACCOUNT_SID", "test")
-TWILIO_AUTH_TOKEN   = os.environ.get("TWILIO_AUTH_TOKEN", "test")
-GOOGLE_API_KEY      = os.environ.get("GOOGLE_API_KEY", "")
-GOOGLE_CX           = os.environ.get("GOOGLE_CX", "")
-YOUTUBE_API_KEY     = os.environ.get("YOUTUBE_API_KEY", "")
+# --- Načtení klíčů z config.py ---
+from config import (
+    OPENAI_API_KEY,
+    PINECONE_API_KEY,
+    PINECONE_ENVIRONMENT,
+    INDEX_NAME,
+    INDEX_DIMENSION,
+    INDEX_METRIC,
+    TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN
+)
+
+# Pokud používáš GOOGLE_API_KEY, GOOGLE_CX, YOUTUBE_API_KEY,
+# načti je už v příslušných modulech (google_search.py, youtube_search.py)
 
 # --- Inicializace Flask + CORS ---
 app = Flask(__name__, static_folder='static', static_url_path='')
@@ -36,23 +35,26 @@ CORS(app)
 
 # --- Inicializace OpenAI klienta ---
 openai.api_key = OPENAI_API_KEY
-openai_client = openai
 
-# --- Inicializace Pinecone ---
-pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENV)
-if INDEX_NAME not in pinecone.list_indexes():
-    pinecone.create_index(
+# --- Inicializace Pinecone klienta v2 ---
+pc = PineconeClient(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
+
+# Vytvoříme index, pokud ještě neexistuje
+if INDEX_NAME not in pc.list_indexes():
+    pc.create_index(
         name=INDEX_NAME,
         dimension=INDEX_DIMENSION,
         metric=INDEX_METRIC,
-        pod_type="p1"
+        spec=ServerlessSpec(cloud="aws", region=PINECONE_ENVIRONMENT)
     )
-memory_index = pinecone.Index(INDEX_NAME)
+
+# Získáme instanci indexu pro čtení a zápis
+memory_index = pc.Index(INDEX_NAME)
 
 # --- KV paměť souboru ---
 KV_PATH = os.path.join(os.path.dirname(__file__), 'kv_memory.json')
 
-# --- Serve PWA ---
+# --- Serve PWA front-end ---
 @app.route('/', methods=['GET'])
 def serve_index():
     return send_from_directory('static', 'index.html')
@@ -133,7 +135,7 @@ def chat():
     system_vect = "Pamatuj si předchozí konverzaci:\n" + "\n".join(memories)
 
     # 6) Volání OpenAI
-    r = openai_client.ChatCompletion.create(
+    r = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": system_date},
@@ -156,5 +158,9 @@ def chat():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)), debug=True)
+    app.run(
+        host='0.0.0.0',
+        port=int(os.environ.get("PORT", 5000)),
+        debug=True
+    )  
     
