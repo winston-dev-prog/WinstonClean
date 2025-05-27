@@ -1,7 +1,7 @@
 import os
 import uuid
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -10,7 +10,8 @@ import openai
 from pinecone import Pinecone, ServerlessSpec
 
 from memory.kv_store import load_kv, save_kv
-from memory.vector_memory import retrieve_memories, store_memory
+# vypnuto: pinecone paměť
+# from memory.vector_memory import retrieve_memories, store_memory
 from search.google_search import google_search
 from search.youtube_search import youtube_search
 
@@ -21,9 +22,7 @@ from config import (
     PINECONE_ENVIRONMENT,
     INDEX_NAME,
     INDEX_DIMENSION,
-    INDEX_METRIC,
-    TWILIO_ACCOUNT_SID,
-    TWILIO_AUTH_TOKEN
+    INDEX_METRIC
 )
 
 # --- Inicializace Flask + CORS ---
@@ -33,10 +32,8 @@ CORS(app)
 # --- Inicializace OpenAI klienta ---
 openai.api_key = OPENAI_API_KEY
 
-# --- Inicializace Pinecone klienta ---
+# --- Inicializace Pinecone ---
 pc = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
-
-# Pokusíme se vytvořit index, pokud ještě neexistuje; ignorujeme chybu konfliktu
 try:
     pc.create_index(
         name=INDEX_NAME,
@@ -45,9 +42,7 @@ try:
         spec=ServerlessSpec(cloud="aws", region=PINECONE_ENVIRONMENT)
     )
 except Exception:
-    pass
-
-# Získáme instanci indexu pro čtení a zápis
+    pass # ignore if already exists
 memory_index = pc.Index(INDEX_NAME)
 
 # --- KV paměť souboru ---
@@ -68,7 +63,7 @@ def chat():
     data = request.get_json(force=True)
     msg = data.get('message', '').strip()
 
-    # 1) Klíč–hodnota paměť
+    # 1) KV paměť
     kv = load_kv(KV_PATH)
     likes = kv.get('likes', [])
 
@@ -78,13 +73,13 @@ def chat():
         save_kv(KV_PATH, kv)
         return jsonify({'reply': f"Uloženo: jméno = {kv['name']}"})
 
-    # Uložení jména přítelkyně
+    # Uložení přítelkyně
     if m := re.match(r'^(?:Moje přítelkyně se jmenuje|Přítelkyně se jmenuje)\s+(.+)$', msg, re.IGNORECASE):
         kv['girlfriend'] = m.group(1).strip().rstrip('.')
         save_kv(KV_PATH, kv)
         return jsonify({'reply': f"Uloženo: přítelkyně = {kv['girlfriend']}"})
 
-    # Uložení oblíbených věcí
+    # Uložení likes
     if m := re.match(r'^(?:Mám rád|Rád piju)\s+(.+)$', msg, re.IGNORECASE):
         item = m.group(1).strip().rstrip('.')
         if item not in likes:
@@ -93,73 +88,43 @@ def chat():
             save_kv(KV_PATH, kv)
         return jsonify({'reply': f"Uloženo: máš rád {item}"})
 
-    # Dotazy na KV paměť
+    # Dotazy na KV
     if re.search(r'^Jak se jmenuji\?*$', msg, re.IGNORECASE):
         name = kv.get('name')
-        return jsonify({'reply': f"Jmenujete se {name}." if name else "Ještě nevím, jak se jmenujete."})
+        return jsonify({'reply': f"Jmenujete se {name}." if name else "Nevím."})
 
-    if re.search(r'^(?:Jak se jmenuje přítelkyně|Jak se jmenuje moje přítelkyně)\?*$', msg, re.IGNORECASE):
+    if re.search(r'^(?:Jak se jmenuje přítelkyně)\?*$', msg, re.IGNORECASE):
         gf = kv.get('girlfriend')
-        return jsonify({'reply': f"Vaše přítelkyně se jmenuje {gf}." if gf else "Ještě nevím jméno vaší přítelkyně."})
+        return jsonify({'reply': f"Přítelkyně se jmenuje {gf}." if gf else "Nevím."})
 
     if re.search(r'^Co mám rád\?*$', msg, re.IGNORECASE):
-        return jsonify({'reply': f"Máš rád: {', '.join(likes)}." if likes else "Ještě nevím, co máš rád."})
+        return jsonify({'reply': f"Máš rád: {', '.join(likes)}." if likes else "Nevím."})
 
-    # Přímá odpověď prezidenta USA přes Google snippet
-    if re.search(r'kdo je prezident(?: usa| spoje[ných]* států)?\??', msg, re.IGNORECASE):
-        try:
-            prez = google_search(msg, num=1)[0]
-            return jsonify({'reply': prez})
-        except Exception:
-            pass
-
-    # 3) Aktuální datum
+    # 2) Datum a live vyhledávání
     today = datetime.now().strftime("%d. %m. %Y")
     system_date = f"Aktuální datum je {today}."
 
-    # 4) Živé vyhledávání
     snippets = []
     for fn in (lambda: google_search(msg, num=2), lambda: youtube_search(msg, max_results=2)):
         try:
             snippets.extend(fn())
         except Exception:
             pass
-    system_live = ("Aktuální informace z webu:\n" + "\n".join(snippets)) if snippets else "Žádná čerstvá data nenalezena."
+    system_live = ("Aktuální informace:\n" + "\n".join(snippets)) if snippets else "Žádná data."
 
-    # 5) Pinecone paměť
-    try:
-        memories = retrieve_memories(msg)
-    except Exception:
-        memories = []
-    system_vect = "Pamatuj si předchozí konverzaci:\n" + "\n".join(memories)
-
-    # 6) Volání OpenAI
+    # 3) Chat s OpenAI
     r = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": system_date},
             {"role": "system", "content": system_live},
-            {"role": "system", "content": system_vect},
             {"role": "user", "content": msg}
         ]
     )
     reply = r.choices[0].message.content
 
-    # 7) Uložení do Pinecone
-    now = datetime.now(timezone.utc).isoformat()
-    try:
-        store_memory(msg, {"id": str(uuid.uuid4()), "text": msg, "timestamp": now})
-        store_memory(reply, {"id": str(uuid.uuid4()), "text": reply, "timestamp": now})
-    except Exception:
-        pass
-
     return jsonify({'reply': reply})
 
-
 if __name__ == '__main__':
-    app.run(
-        host='0.0.0.0',
-        port=int(os.environ.get("PORT", 5000)),
-        debug=True
-    )
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
     
