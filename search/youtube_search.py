@@ -1,30 +1,19 @@
 from googleapiclient.discovery import build
-import config
+from config import YOUTUBE_API_KEY
 
-def youtube_search(query: str, max_results: int = 3) -> list[str]:
+def youtube_search(query: str, max_results: int = 2) -> list[str]:
     """
-    Vrátí seznam řetězců ve formátu:
-      Název videa (https://youtu.be/…Id>)
-    pro prvních max_results videí z YouTube.
+    Provede vyhledání na YouTube a vrátí seznam titulků videí.
     """
-    # vytvoří client pro YouTube Data API
-    yt = build("youtube", "v3", developerKey=config.YOUTUBE_API_KEY)
-
-    # požadavek na vyhledání videí
-    req = yt.search().list(
-        q=query,
-        part="snippet",
-        type="video",
-        maxResults=max_results
+    if not YOUTUBE_API_KEY:
+        return ["Chybí YouTube API klíč v prostředí."]
+    youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+    resp = (
+        youtube
+        .search()
+        .list(q=query, part="snippet", maxResults=max_results)
+        .execute()
     )
-    res = req.execute()
-
-    # sestavíme seznam titulků + url
-    videos = []
-    for item in res.get("items", []):
-        title = item["snippet"]["title"]
-        video_id = item["id"]["videoId"]
-        url = f"https://youtu.be/…id"
-        videos.append(f"{title} ({url})")
-
-    return videos
+    items = resp.get("items", [])
+    # z každé položky vezmeme snippet.title
+    return [item["snippet"]["title"] for item in items]
