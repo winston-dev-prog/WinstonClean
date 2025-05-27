@@ -7,7 +7,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 import openai
-from pinecone import Client as PineconeClient, ServerlessSpec
+from pinecone import Pinecone, ServerlessSpec
 
 from memory.kv_store import load_kv, save_kv
 from memory.vector_memory import retrieve_memories, store_memory
@@ -26,9 +26,6 @@ from config import (
     TWILIO_AUTH_TOKEN
 )
 
-# Pokud používáš GOOGLE_API_KEY, GOOGLE_CX, YOUTUBE_API_KEY,
-# načti je už v příslušných modulech (google_search.py, youtube_search.py)
-
 # --- Inicializace Flask + CORS ---
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
@@ -36,8 +33,8 @@ CORS(app)
 # --- Inicializace OpenAI klienta ---
 openai.api_key = OPENAI_API_KEY
 
-# --- Inicializace Pinecone klienta v2 ---
-pc = PineconeClient(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
+# --- Inicializace Pinecone klienta ---
+pc = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
 
 # Vytvoříme index, pokud ještě neexistuje
 if INDEX_NAME not in pc.list_indexes():
@@ -162,5 +159,5 @@ if __name__ == '__main__':
         host='0.0.0.0',
         port=int(os.environ.get("PORT", 5000)),
         debug=True
-    )  
+    )
     
