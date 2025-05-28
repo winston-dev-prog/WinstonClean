@@ -4,9 +4,7 @@ import re
 from datetime import datetime
 
 from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS 
-app = Flask(__name__, static_folder='static', static_url_path='') 
-CORS(app)
+from flask_cors import CORS, cross_origin
 
 import openai
 from pinecone import Pinecone, ServerlessSpec
@@ -60,8 +58,13 @@ def serve_static(filename):
     return send_from_directory('static', filename)
 
 # --- API endpoint pro chat ---
-@app.route('/chat', methods=['POST'])
+@app.route('/chat', methods=['OPTIONS', 'POST'])
+@cross_origin()
 def chat():
+    # Handle preflight
+    if request.method == 'OPTIONS':
+        return '', 200
+
     data = request.get_json(force=True)
     msg = data.get('message', '').strip()
 
