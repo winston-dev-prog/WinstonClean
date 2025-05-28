@@ -17,87 +17,90 @@
   <div id="conv"></div>
   <button id="btn">Mluv se mnou</button>
 
-  <script>
-    // registrace service worker
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js');
+ <script>
+  // registrace service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js');
+  }
+
+  // požádej o notifikace
+  if ('Notification' in window && Notification.permission !== 'granted') {
+    Notification.requestPermission();
+  }
+
+  const conv = document.getElementById('conv');
+  const btn = document.getElementById('btn');
+  const synth = window.speechSynthesis;
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const rec = new SpeechRec();
+  rec.lang = 'cs-CZ';
+  rec.interimResults = false;
+
+  btn.onclick = () => rec.start();
+
+  rec.onresult = e => {
+    const msg = e.results[0][0].transcript.trim();
+    append('Ty', msg);
+
+    // 1) Nastavení budíku
+    const alarmMatch = msg.match(/^nastav budík na\s+(\d{1,2}):(\d{2})$/i);
+    if (alarmMatch) {
+      const hours = parseInt(alarmMatch[1], 10);
+      const mins = parseInt(alarmMatch[2], 10);
+      scheduleAlarm(hours, mins);
+      append('Winston', `Budík nastaven na ${hours}:${mins.toString().padStart(2,'0')}`);
+      return;
     }
 
-    // požádej o notifikace
-    if ('Notification' in window && Notification.permission !== 'granted') {
-      Notification.requestPermission();
-    }
+    // 2) Voláme backend relativní cestou
+    fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
+    })
+    .then(r => {
+      if (!r.ok) throw new Error(r.statusText);
+      return r.json();
+    })
+    .then(j => {
+      append('Winston', j.reply);
+      speak(j.reply);
+    })
+    .catch(err => {
+      console.error(err);
+      append('Chyba', 'Server nedostupný');
+    });
+  };
 
-    const NGROK_URL = 'https://winston-dev-prog.github.io/winston-pwa/'; // nahraď svou ngrok adresou
-    const conv = document.getElementById('conv');
-    const btn = document.getElementById('btn');
-    const synth = window.speechSynthesis;
-    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const rec = new SpeechRec();
-    rec.lang = 'cs-CZ';
-    rec.interimResults = false;
-
-    btn.onclick = () => rec.start();
-
-    rec.onresult = e => {
-      const msg = e.results[0][0].transcript.trim();
-      append('Ty', msg);
-
-      // 1) Nastavení budíku
-      const alarmMatch = msg.match(/^nastav budík na\s+(\d{1,2}):(\d{2})$/i);
-      if (alarmMatch) {
-        const hours = parseInt(alarmMatch[1], 10);
-        const mins = parseInt(alarmMatch[2], 10);
-        scheduleAlarm(hours, mins);
-        append('Winston', `Budík nastaven na ${hours}:${mins.toString().padStart(2,'0')}`);
-        return;
-      }
-
-      // jinak voláme backend
-      fetch(`${NGROK_URL}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg })
-      })
-      .then(r => r.json())
-      .then(j => {
-        append('Winston', j.reply);
-        speak(j.reply);
-      })
-      .catch(err => {
-        console.error(err);
-        append('Chyba', 'Server nedostupný');
+  function scheduleAlarm(h, m) {
+    const now = new Date();
+    const alarm = new Date();
+    alarm.setHours(h, m, 0, 0);
+    if (alarm <= now) alarm.setDate(alarm.getDate() + 1);
+    const delay = alarm.getTime() - now.getTime();
+    setTimeout(() => {
+      new Notification('Winston Budík', {
+        body: `Je ${h}:${m.toString().padStart(2,'0')}`,
+        tag: 'winston-alarm'
       });
-    };
-
-    function scheduleAlarm(h, m) {
-      const now = new Date();
-      const alarm = new Date();
-      alarm.setHours(h, m, 0, 0);
-      if (alarm <= now) alarm.setDate(alarm.getDate() + 1);
-      const delay = alarm.getTime() - now.getTime();
-      setTimeout(() => {
-        new Notification('Winston Budík', {
-          body: `Je ${h}:${m.toString().padStart(2,'0')}`,
-          tag: 'winston-alarm'
-        });
-        const u = new SpeechSynthesisUtterance(`Budík. Je ${h} hodin ${m} minut`);
-        u.lang = 'cs-CZ';
-        synth.speak(u);
-        append('Winston', `🔔 Je ${h}:${m.toString().padStart(2,'0')} – budík!`);
-      }, delay);
-    }
-
-    function append(who, text) {
-      conv.innerHTML += `<p><strong>${who}:</strong> ${text}</p>`;
-      conv.scrollTop = conv.scrollHeight;
-    }
-
-    function speak(txt) {
-      const u = new SpeechSynthesisUtterance(txt);
+      const u = new SpeechSynthesisUtterance(`Budík. Je ${h} hodin ${m} minut`);
       u.lang = 'cs-CZ';
       synth.speak(u);
-    }
-  </script>
+      append('Winston', `🔔 Je ${h}:${m.toString().padStart(2,'0')} – budík!`);
+    }, delay);
+  }
+
+  function append(who, text) {
+    conv.innerHTML += `<p><strong>${who}:</strong> ${text}</p>`;
+    conv.scrollTop = conv.scrollHeight;
+  }
+
+  function speak(txt) {
+    const u = new SpeechSynthesisUtterance(txt);
+    u.lang = 'cs-CZ';
+    synth.speak(u);
+  }
+</script>
+
 </body>
 </html>
