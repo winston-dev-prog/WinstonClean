@@ -18,10 +18,17 @@
   <button id="btn">Mluv se mnou</button>
 
  <script>
-  // registrace service worker
-  //if ('serviceWorker' in navigator) {
-   // navigator.serviceWorker.register('sw.js');
- // }
+  // Unregister existing service workers to prevent fetch interception
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(registrations => {
+      registrations.forEach(reg => reg.unregister());
+    });
+  }
+
+  // Temporarily disable service worker registration
+  // if ('serviceWorker' in navigator) {
+  // navigator.serviceWorker.register('sw.js');
+  // }
 
   // požádej o notifikace
   if ('Notification' in window && Notification.permission !== 'granted') {
