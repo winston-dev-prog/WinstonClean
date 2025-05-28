@@ -4,14 +4,12 @@ import re
 from datetime import datetime
 
 from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
+from flask_cors import CORS, cross_origin
 
 import openai
 from pinecone import Pinecone, ServerlessSpec
 
 from memory.kv_store import load_kv, save_kv
-# vypnuto: pinecone paměť
-# from memory.vector_memory import retrieve_memories, store_memory
 from search.google_search import google_search
 from search.youtube_search import youtube_search
 
@@ -58,9 +56,10 @@ def serve_static(filename):
     return send_from_directory('static', filename)
 
 # --- API endpoint pro chat ---
-@app.route('/chat', methods=['POST'])
+@app.route('/chat', methods=['OPTIONS', 'POST'])
+@cross_origin()
 def chat():
-    # Handle preflight
+    # Handle preflight CORS
     if request.method == 'OPTIONS':
         return '', 200
 
